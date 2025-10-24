@@ -1,8 +1,8 @@
 # PowerShell script to test SQL Server connection
-$serverName = "TRI02L-PW03VMZD\SQLEXPRESS"
+$serverName = "TRI02L-PW03VMZD\MSSQLSERVER1"
 $database = "ComplexDB"
-$username = "pocuser"
-$password = "StrongPassword123!"
+$username = "sa"
+$password = "Welcome@123"
 
 Write-Host "Testing SQL Server Connection..." -ForegroundColor Yellow
 Write-Host "Server: $serverName"
