@@ -2,6 +2,7 @@ using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using System.Text.Json;
 
 namespace CleanArchitecture.Infrastructure.Data.Configurations;
@@ -28,6 +29,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<User>(entity =>
         {
+            entity.ToTable("users");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -38,7 +40,7 @@ public static class EntityConfigurationFactory
             entity.Property(e => e.Status).HasConversion<string>();
             entity.Property(e => e.Role).HasConversion<string>();
             entity.Property(e => e.CreditScore).HasColumnType(GetDecimalType(18, 6, isPostgreSQL));
-            entity.Property(e => e.Balance).HasColumnType("money");
+            entity.Property(e => e.Balance).HasColumnType(GetDecimalType(18, 2, isPostgreSQL));
         });
     }
     
@@ -46,6 +48,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<UserProfile>(entity =>
         {
+            entity.ToTable("user_profiles");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -62,6 +65,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<UserSession>(entity =>
         {
+            entity.ToTable("user_sessions");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -77,6 +81,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<Product>(entity =>
         {
+            entity.ToTable("products");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -111,6 +116,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<ProductReview>(entity =>
         {
+            entity.ToTable("product_reviews");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -136,6 +142,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<ProductInventory>(entity =>
         {
+            entity.ToTable("product_inventories");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -159,6 +166,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<Order>(entity =>
         {
+            entity.ToTable("orders");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -186,6 +194,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<OrderItem>(entity =>
         {
+            entity.ToTable("order_items");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -212,6 +221,7 @@ public static class EntityConfigurationFactory
     {
         modelBuilder.Entity<OrderStatusHistory>(entity =>
         {
+            entity.ToTable("order_status_histories");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
             
@@ -249,37 +259,60 @@ public static class EntityConfigurationFactory
     
     private static void ConfigureArrays(PropertyBuilder<string[]> property, bool isPostgreSQL)
     {
-        if (isPostgreSQL)
-        {
-            property.HasColumnType("text[]");
-        }
-        else
-        {
-            property.HasConversion(
-                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                v => JsonSerializer.Deserialize<string[]>(v, (JsonSerializerOptions?)null) ?? Array.Empty<string>()
-            );
-        }
+        // Use JSON serialization for compatibility with existing text columns
+        property.HasColumnType("text");
+        property.HasConversion(
+            new ValueConverter<string[], string>(
+                v => v == null || v.Length == 0 ? "[]" : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => DeserializeStringArray(v)
+            )
+        );
     }
     
     private static void ConfigureArrays(PropertyBuilder<int[]> property, bool isPostgreSQL)
     {
-        if (isPostgreSQL)
+        // Use JSON serialization for compatibility with existing text columns
+        property.HasColumnType("text");
+        property.HasConversion(
+            new ValueConverter<int[], string>(
+                v => v == null || v.Length == 0 ? "[]" : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                v => DeserializeIntArray(v)
+            )
+        );
+    }
+    
+    private static string[] DeserializeStringArray(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value == "null") 
+            return Array.Empty<string>();
+        try 
         {
-            property.HasColumnType("integer[]");
+            return JsonSerializer.Deserialize<string[]>(value, (JsonSerializerOptions?)null) ?? Array.Empty<string>();
         }
-        else
+        catch 
         {
-            property.HasConversion(
-                v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                v => JsonSerializer.Deserialize<int[]>(v, (JsonSerializerOptions?)null) ?? Array.Empty<int>()
-            );
+            return Array.Empty<string>();
+        }
+    }
+    
+    private static int[] DeserializeIntArray(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value == "null") 
+            return Array.Empty<int>();
+        try 
+        {
+            return JsonSerializer.Deserialize<int[]>(value, (JsonSerializerOptions?)null) ?? Array.Empty<int>();
+        }
+        catch 
+        {
+            return Array.Empty<int>();
         }
     }
     
     private static void ConfigureJson(PropertyBuilder<string?> property, bool isPostgreSQL)
     {
-        property.HasColumnType(isPostgreSQL ? "jsonb" : "nvarchar(max)");
+        // Use text for compatibility with existing database schema
+        property.HasColumnType("text");
     }
     
     private static string GetDefaultGuidSql(bool isPostgreSQL) => 

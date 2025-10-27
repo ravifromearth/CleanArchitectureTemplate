@@ -203,18 +203,18 @@ public class DatabaseManager : IDatabaseManager
                 stats.TotalRecords = stats.UserCount + stats.ProductCount + stats.OrderCount;
                 stats.HasData = stats.TotalRecords > 0;
                 
-                // Get database name from connection string
+                // Get database name from connection string (PostgreSQL format)
                 var connectionString = _context.Database.GetConnectionString();
                 if (!string.IsNullOrEmpty(connectionString))
                 {
                     var parts = connectionString.Split(';');
                     foreach (var part in parts)
                     {
-                        if (part.Trim().StartsWith("Initial Catalog=", StringComparison.OrdinalIgnoreCase))
+                        if (part.Trim().StartsWith("Database=", StringComparison.OrdinalIgnoreCase))
                         {
                             stats.DatabaseName = part.Split('=')[1].Trim();
                         }
-                        if (part.Trim().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+                        if (part.Trim().StartsWith("Host=", StringComparison.OrdinalIgnoreCase))
                         {
                             stats.ServerName = part.Split('=')[1].Trim();
                         }

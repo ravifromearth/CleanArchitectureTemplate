@@ -1,143 +1,128 @@
 -- =============================================
 -- Views for Complex Data Queries
+-- Migrated to PostgreSQL from SQL Server
 -- =============================================
 
 -- View: User Profile Summary
-IF OBJECT_ID('vw_UserProfileSummary', 'V') IS NOT NULL
-    DROP VIEW vw_UserProfileSummary;
-GO
+DROP VIEW IF EXISTS vw_user_profile_summary CASCADE;
 
-CREATE VIEW vw_UserProfileSummary
-AS
+CREATE VIEW vw_user_profile_summary AS
 SELECT 
-    u.Id AS UserId,
-    u.Username,
-    u.Email,
-    u.Status,
-    u.Role,
-    u.Balance,
-    u.CreditScore,
-    u.CreatedAt,
-    u.LastLoginAt,
-    up.FirstName,
-    up.LastName,
-    up.PhoneNumber,
-    up.HomeAddress_City AS City,
-    up.HomeAddress_State AS State,
-    up.HomeAddress_Country AS Country,
-    (SELECT CAST(COUNT(*) AS INT) FROM Orders WHERE UserId = u.Id) AS TotalOrders,
-    (SELECT SUM(Total) FROM Orders WHERE UserId = u.Id) AS TotalSpent
-FROM Users u
-LEFT JOIN UserProfiles up ON u.Id = up.UserId;
-GO
+    u.id AS user_id,
+    u.username,
+    u.email,
+    u.status,
+    u.role,
+    u.balance,
+    u.credit_score,
+    u.created_at,
+    u.last_login_at,
+    up.first_name,
+    up.last_name,
+    up.phone_number,
+    up.home_address_city AS city,
+    up.home_address_state AS state,
+    up.home_address_country AS country,
+    (SELECT CAST(COUNT(*) AS INTEGER) FROM orders WHERE user_id = u.id) AS total_orders,
+    (SELECT SUM(total) FROM orders WHERE user_id = u.id) AS total_spent
+FROM users u
+LEFT JOIN user_profiles up ON u.id = up.user_id;
 
 -- View: Product Inventory Status
-IF OBJECT_ID('vw_ProductInventoryStatus', 'V') IS NOT NULL
-    DROP VIEW vw_ProductInventoryStatus;
-GO
+DROP VIEW IF EXISTS vw_product_inventory_status CASCADE;
 
-CREATE VIEW vw_ProductInventoryStatus
-AS
+CREATE VIEW vw_product_inventory_status AS
 SELECT 
-    p.Id AS ProductId,
-    p.Name AS ProductName,
-    p.SKU,
-    p.Price,
-    p.SalePrice,
-    p.Status AS ProductStatus,
-    p.Type AS ProductType,
-    pi.WarehouseCode,
-    pi.Quantity,
-    pi.AvailableQuantity,
-    pi.ReservedQuantity,
-    pi.Status AS InventoryStatus,
-    pi.LastUpdated,
+    p.id AS product_id,
+    p.name AS product_name,
+    p.sku,
+    p.price,
+    p.sale_price,
+    p.status AS product_status,
+    p.type AS product_type,
+    pi.warehouse_code,
+    pi.quantity,
+    pi.available_quantity,
+    pi.reserved_quantity,
+    pi.status AS inventory_status,
+    pi.last_updated,
     CASE 
-        WHEN pi.AvailableQuantity > 100 THEN 'High Stock'
-        WHEN pi.AvailableQuantity BETWEEN 20 AND 100 THEN 'Medium Stock'
-        WHEN pi.AvailableQuantity BETWEEN 1 AND 19 THEN 'Low Stock'
+        WHEN pi.available_quantity > 100 THEN 'High Stock'
+        WHEN pi.available_quantity BETWEEN 20 AND 100 THEN 'Medium Stock'
+        WHEN pi.available_quantity BETWEEN 1 AND 19 THEN 'Low Stock'
         ELSE 'Out of Stock'
-    END AS StockLevel
-FROM Products p
-LEFT JOIN ProductInventories pi ON p.Id = pi.ProductId;
-GO
+    END AS stock_level
+FROM products p
+LEFT JOIN product_inventories pi ON p.id = pi.product_id;
 
 -- View: Order Details Summary
-IF OBJECT_ID('vw_OrderDetailsSummary', 'V') IS NOT NULL
-    DROP VIEW vw_OrderDetailsSummary;
-GO
+DROP VIEW IF EXISTS vw_order_details_summary CASCADE;
 
-CREATE VIEW vw_OrderDetailsSummary
-AS
+CREATE VIEW vw_order_details_summary AS
 SELECT 
-    o.Id AS OrderId,
-    o.OrderNumber,
-    o.UserId,
-    u.Username,
-    u.Email,
-    o.CreatedAt AS OrderDate,
-    o.Status AS OrderStatus,
-    o.PaymentMethod,
-    o.SubTotal,
-    o.TaxAmount,
-    o.ShippingCost,
-    o.Total,
-    o.ShippingAddress_City AS ShipToCity,
-    o.ShippingAddress_State AS ShipToState,
-    o.ShippingAddress_Country AS ShipToCountry,
-    (SELECT COUNT(*) FROM OrderItems WHERE OrderId = o.Id) AS TotalItems,
-    (SELECT SUM(Quantity) FROM OrderItems WHERE OrderId = o.Id) AS TotalQuantity
-FROM Orders o
-INNER JOIN Users u ON o.UserId = u.Id;
-GO
+    o.id AS order_id,
+    o.order_number,
+    o.user_id,
+    u.username,
+    u.email,
+    o.created_at AS order_date,
+    o.status AS order_status,
+    o.payment_method,
+    o.sub_total,
+    o.tax_amount,
+    o.shipping_cost,
+    o.total,
+    o.shipping_address_city AS ship_to_city,
+    o.shipping_address_state AS ship_to_state,
+    o.shipping_address_country AS ship_to_country,
+    (SELECT COUNT(*) FROM order_items WHERE order_id = o.id) AS total_items,
+    (SELECT SUM(quantity) FROM order_items WHERE order_id = o.id) AS total_quantity
+FROM orders o
+INNER JOIN users u ON o.user_id = u.id;
 
 -- View: Product Reviews Summary
-IF OBJECT_ID('vw_ProductReviewsSummary', 'V') IS NOT NULL
-    DROP VIEW vw_ProductReviewsSummary;
-GO
+DROP VIEW IF EXISTS vw_product_reviews_summary CASCADE;
 
-CREATE VIEW vw_ProductReviewsSummary
-AS
+CREATE VIEW vw_product_reviews_summary AS
 SELECT 
-    p.Id AS ProductId,
-    p.Name AS ProductName,
-    p.SKU,
-    COUNT(pr.Id) AS TotalReviews,
-    AVG(CAST(pr.Rating AS FLOAT)) AS AverageRating,
-    SUM(CASE WHEN pr.Rating = 5 THEN 1 ELSE 0 END) AS FiveStarCount,
-    SUM(CASE WHEN pr.Rating = 4 THEN 1 ELSE 0 END) AS FourStarCount,
-    SUM(CASE WHEN pr.Rating = 3 THEN 1 ELSE 0 END) AS ThreeStarCount,
-    SUM(CASE WHEN pr.Rating = 2 THEN 1 ELSE 0 END) AS TwoStarCount,
-    SUM(CASE WHEN pr.Rating = 1 THEN 1 ELSE 0 END) AS OneStarCount
-FROM Products p
-LEFT JOIN ProductReviews pr ON p.Id = pr.ProductId
-GROUP BY p.Id, p.Name, p.SKU;
-GO
+    p.id AS product_id,
+    p.name AS product_name,
+    p.sku,
+    COUNT(pr.id) AS total_reviews,
+    AVG(pr.rating::NUMERIC) AS average_rating,
+    SUM(CASE WHEN pr.rating = 5 THEN 1 ELSE 0 END) AS five_star_count,
+    SUM(CASE WHEN pr.rating = 4 THEN 1 ELSE 0 END) AS four_star_count,
+    SUM(CASE WHEN pr.rating = 3 THEN 1 ELSE 0 END) AS three_star_count,
+    SUM(CASE WHEN pr.rating = 2 THEN 1 ELSE 0 END) AS two_star_count,
+    SUM(CASE WHEN pr.rating = 1 THEN 1 ELSE 0 END) AS one_star_count
+FROM products p
+LEFT JOIN product_reviews pr ON p.id = pr.product_id
+GROUP BY p.id, p.name, p.sku;
 
 -- View: Active User Sessions
-IF OBJECT_ID('vw_ActiveUserSessions', 'V') IS NOT NULL
-    DROP VIEW vw_ActiveUserSessions;
-GO
+DROP VIEW IF EXISTS vw_active_user_sessions CASCADE;
 
-CREATE VIEW vw_ActiveUserSessions
-AS
+CREATE VIEW vw_active_user_sessions AS
 SELECT 
-    us.Id AS SessionId,
-    us.UserId,
-    u.Username,
-    u.Email,
-    us.SessionToken,
-    us.IpAddress,
-    us.Type AS SessionType,
-    us.Status AS SessionStatus,
-    us.CreatedAt,
-    us.LastActivityAt,
-    us.ExpiresAt,
-    DATEDIFF(MINUTE, us.LastActivityAt, GETDATE()) AS MinutesSinceLastActivity
-FROM UserSessions us
-INNER JOIN Users u ON us.UserId = u.Id
-WHERE us.Status = 'Active' AND us.ExpiresAt > GETDATE();
-GO
+    us.id AS session_id,
+    us.user_id,
+    u.username,
+    u.email,
+    us.session_token,
+    us.ip_address,
+    us.type AS session_type,
+    us.status AS session_status,
+    us.created_at,
+    us.last_activity_at,
+    us.expires_at,
+    EXTRACT(EPOCH FROM (now() - us.last_activity_at))::INTEGER / 60 AS minutes_since_last_activity
+FROM user_sessions us
+INNER JOIN users u ON us.user_id = u.id
+WHERE us.status = 'Active' AND us.expires_at > now();
 
-PRINT 'Views created successfully!';
+-- Verification message
+DO $$
+BEGIN
+    RAISE NOTICE 'Views created successfully!';
+END $$;
 

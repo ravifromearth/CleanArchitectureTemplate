@@ -2,7 +2,6 @@ namespace CleanArchitecture.Application.Configuration;
 
 public class DatabaseSettings
 {
-    public bool UseSqlServer { get; set; } = true;
     public ConnectionStrings ConnectionStrings { get; set; } = new();
     public bool AutoCreateDatabase { get; set; } = true;
     public bool AutoApplyMigrations { get; set; } = true;
@@ -14,7 +13,6 @@ public class DatabaseSettings
 
 public class ConnectionStrings
 {
-    public string SqlServer { get; set; } = string.Empty;
     public string PostgreSQL { get; set; } = string.Empty;
 }
 

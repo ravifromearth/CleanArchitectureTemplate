@@ -50,29 +50,16 @@ var host = Host.CreateDefaultBuilder(args)
         
         var databaseSettings = context.Configuration.GetSection("DatabaseSettings").Get<DatabaseSettings>() ?? new DatabaseSettings();
         
-        // Configure database provider
-        if (databaseSettings.UseSqlServer)
-        {
-            services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseSqlServer(
-                    databaseSettings.ConnectionStrings.SqlServer,
-                    sqlOptions => sqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 5,
-                        maxRetryDelay: TimeSpan.FromSeconds(30),
-                        errorNumbersToAdd: null)
-                ));
-        }
-        else
-        {
-            services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseNpgsql(
-                    databaseSettings.ConnectionStrings.PostgreSQL,
-                    npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 5,
-                        maxRetryDelay: TimeSpan.FromSeconds(30),
-                        errorCodesToAdd: null)
-                ));
-        }
+        services.AddDbContext<ApplicationDbContext>(options => {
+            options.UseNpgsql(
+                databaseSettings.ConnectionStrings.PostgreSQL,
+                npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorCodesToAdd: null)
+            ).UseSnakeCaseNamingConvention();
+        });
+
         
         // Register repositories and unit of work
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));

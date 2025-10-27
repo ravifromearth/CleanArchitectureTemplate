@@ -1,203 +1,231 @@
 -- =============================================
 -- Scalar and Table-Valued Functions
+-- Migrated to PostgreSQL (PL/pgSQL) from SQL Server
 -- =============================================
 
 -- Scalar Function: Calculate User Lifetime Value
-IF OBJECT_ID('fn_CalculateUserLifetimeValue', 'FN') IS NOT NULL
-    DROP FUNCTION fn_CalculateUserLifetimeValue;
-GO
+DROP FUNCTION IF EXISTS fn_calculate_user_lifetime_value(uuid);
 
-CREATE FUNCTION fn_CalculateUserLifetimeValue
-(
-    @UserId UNIQUEIDENTIFIER
+CREATE OR REPLACE FUNCTION fn_calculate_user_lifetime_value(
+    p_user_id uuid
 )
-RETURNS DECIMAL(18,2)
-AS
+RETURNS NUMERIC(18,2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_lifetime_value NUMERIC(18,2);
 BEGIN
-    DECLARE @LifetimeValue DECIMAL(18,2);
+    SELECT COALESCE(SUM(total), 0) INTO v_lifetime_value
+    FROM orders
+    WHERE user_id = p_user_id AND status IN ('Delivered', 'Processing', 'Shipped');
     
-    SELECT @LifetimeValue = ISNULL(SUM(Total), 0)
-    FROM Orders
-    WHERE UserId = @UserId AND Status IN ('Delivered', 'Processing', 'Shipped');
-    
-    RETURN @LifetimeValue;
+    RETURN v_lifetime_value;
 END;
-GO
+$$;
 
 -- Scalar Function: Get Product Average Rating
-IF OBJECT_ID('fn_GetProductAverageRating', 'FN') IS NOT NULL
-    DROP FUNCTION fn_GetProductAverageRating;
-GO
+DROP FUNCTION IF EXISTS fn_get_product_average_rating(uuid);
 
-CREATE FUNCTION fn_GetProductAverageRating
-(
-    @ProductId UNIQUEIDENTIFIER
+CREATE OR REPLACE FUNCTION fn_get_product_average_rating(
+    p_product_id uuid
 )
-RETURNS DECIMAL(3,2)
-AS
+RETURNS NUMERIC(3,2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_average_rating NUMERIC(3,2);
 BEGIN
-    DECLARE @AverageRating DECIMAL(3,2);
+    SELECT COALESCE(AVG(rating::NUMERIC(3,2)), 0) INTO v_average_rating
+    FROM product_reviews
+    WHERE product_id = p_product_id AND status = 'Approved';
     
-    SELECT @AverageRating = ISNULL(AVG(CAST(Rating AS DECIMAL(3,2))), 0)
-    FROM ProductReviews
-    WHERE ProductId = @ProductId AND Status = 'Approved';
-    
-    RETURN @AverageRating;
+    RETURN v_average_rating;
 END;
-GO
+$$;
 
 -- Scalar Function: Calculate Order Discount
-IF OBJECT_ID('fn_CalculateOrderDiscount', 'FN') IS NOT NULL
-    DROP FUNCTION fn_CalculateOrderDiscount;
-GO
+DROP FUNCTION IF EXISTS fn_calculate_order_discount(NUMERIC, text);
 
-CREATE FUNCTION fn_CalculateOrderDiscount
-(
-    @SubTotal DECIMAL(18,2),
-    @UserRole NVARCHAR(MAX)
+CREATE OR REPLACE FUNCTION fn_calculate_order_discount(
+    p_sub_total NUMERIC(18,2),
+    p_user_role text
 )
-RETURNS DECIMAL(18,2)
-AS
+RETURNS NUMERIC(18,2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_discount NUMERIC(18,2) := 0;
 BEGIN
-    DECLARE @Discount DECIMAL(18,2) = 0;
-    
     -- Apply role-based discounts
-    IF @UserRole = 'SuperAdmin'
-        SET @Discount = @SubTotal * 0.20; -- 20% discount
-    ELSE IF @UserRole = 'Admin'
-        SET @Discount = @SubTotal * 0.15; -- 15% discount
-    ELSE IF @UserRole = 'Moderator'
-        SET @Discount = @SubTotal * 0.10; -- 10% discount
-    ELSE IF @SubTotal > 1000
-        SET @Discount = @SubTotal * 0.05; -- 5% for orders over $1000
+    IF p_user_role = 'SuperAdmin' THEN
+        v_discount := p_sub_total * 0.20; -- 20% discount
+    ELSIF p_user_role = 'Admin' THEN
+        v_discount := p_sub_total * 0.15; -- 15% discount
+    ELSIF p_user_role = 'Moderator' THEN
+        v_discount := p_sub_total * 0.10; -- 10% discount
+    ELSIF p_sub_total > 1000 THEN
+        v_discount := p_sub_total * 0.05; -- 5% for orders over $1000
+    END IF;
     
-    RETURN @Discount;
+    RETURN v_discount;
 END;
-GO
+$$;
 
 -- Table-Valued Function: Get User Order History
-IF OBJECT_ID('fn_GetUserOrderHistory', 'TF') IS NOT NULL
-    DROP FUNCTION fn_GetUserOrderHistory;
-GO
+DROP FUNCTION IF EXISTS fn_get_user_order_history(uuid, timestamp, timestamp);
 
-CREATE FUNCTION fn_GetUserOrderHistory
-(
-    @UserId UNIQUEIDENTIFIER,
-    @FromDate DATETIME = NULL,
-    @ToDate DATETIME = NULL
+CREATE OR REPLACE FUNCTION fn_get_user_order_history(
+    p_user_id uuid,
+    p_from_date timestamp DEFAULT NULL,
+    p_to_date timestamp DEFAULT NULL
 )
-RETURNS TABLE
-AS
-RETURN
-(
+RETURNS TABLE (
+    id uuid,
+    order_number varchar(50),
+    created_at timestamp,
+    status text,
+    payment_method text,
+    total NUMERIC(18,2),
+    item_count bigint,
+    total_quantity bigint
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
     SELECT 
-        o.Id,
-        o.OrderNumber,
-        o.CreatedAt,
-        o.Status,
-        o.PaymentMethod,
-        o.Total,
-        COUNT(oi.Id) AS ItemCount,
-        SUM(oi.Quantity) AS TotalQuantity
-    FROM Orders o
-    LEFT JOIN OrderItems oi ON o.Id = oi.OrderId
-    WHERE o.UserId = @UserId
-        AND (@FromDate IS NULL OR o.CreatedAt >= @FromDate)
-        AND (@ToDate IS NULL OR o.CreatedAt <= @ToDate)
-    GROUP BY o.Id, o.OrderNumber, o.CreatedAt, o.Status, o.PaymentMethod, o.Total
-);
-GO
+        o.id,
+        o.order_number,
+        o.created_at,
+        o.status,
+        o.payment_method,
+        o.total,
+        COUNT(oi.id) AS item_count,
+        SUM(oi.quantity) AS total_quantity
+    FROM orders o
+    LEFT JOIN order_items oi ON o.id = oi.order_id
+    WHERE o.user_id = p_user_id
+        AND (p_from_date IS NULL OR o.created_at >= p_from_date)
+        AND (p_to_date IS NULL OR o.created_at <= p_to_date)
+    GROUP BY o.id, o.order_number, o.created_at, o.status, o.payment_method, o.total;
+END;
+$$;
 
 -- Table-Valued Function: Get Top Selling Products
-IF OBJECT_ID('fn_GetTopSellingProducts', 'TF') IS NOT NULL
-    DROP FUNCTION fn_GetTopSellingProducts;
-GO
+DROP FUNCTION IF EXISTS fn_get_top_selling_products(integer, timestamp, timestamp);
 
-CREATE FUNCTION fn_GetTopSellingProducts
-(
-    @TopN INT = 10,
-    @FromDate DATETIME = NULL,
-    @ToDate DATETIME = NULL
+CREATE OR REPLACE FUNCTION fn_get_top_selling_products(
+    p_top_n integer DEFAULT 10,
+    p_from_date timestamp DEFAULT NULL,
+    p_to_date timestamp DEFAULT NULL
 )
-RETURNS TABLE
-AS
-RETURN
-(
-    SELECT TOP (@TopN)
-        p.Id AS ProductId,
-        p.Name AS ProductName,
-        p.SKU,
-        p.Price,
-        COUNT(oi.Id) AS TimesSold,
-        SUM(oi.Quantity) AS TotalQuantitySold,
-        SUM(oi.TotalPrice) AS TotalRevenue,
-        AVG(oi.UnitPrice) AS AverageSellingPrice
-    FROM Products p
-    INNER JOIN OrderItems oi ON p.Id = oi.ProductId
-    INNER JOIN Orders o ON oi.OrderId = o.Id
-    WHERE (@FromDate IS NULL OR o.CreatedAt >= @FromDate)
-        AND (@ToDate IS NULL OR o.CreatedAt <= @ToDate)
-        AND o.Status IN ('Processing', 'Shipped', 'Delivered')
-    GROUP BY p.Id, p.Name, p.SKU, p.Price
-    ORDER BY TotalQuantitySold DESC
-);
-GO
+RETURNS TABLE (
+    product_id uuid,
+    product_name varchar(200),
+    sku varchar(100),
+    price NUMERIC(18,4),
+    times_sold bigint,
+    total_quantity_sold bigint,
+    total_revenue NUMERIC(18,4),
+    average_selling_price NUMERIC(18,4)
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        p.id AS product_id,
+        p.name AS product_name,
+        p.sku,
+        p.price,
+        COUNT(oi.id) AS times_sold,
+        SUM(oi.quantity) AS total_quantity_sold,
+        SUM(oi.total_price) AS total_revenue,
+        AVG(oi.unit_price) AS average_selling_price
+    FROM products p
+    INNER JOIN order_items oi ON p.id = oi.product_id
+    INNER JOIN orders o ON oi.order_id = o.id
+    WHERE (p_from_date IS NULL OR o.created_at >= p_from_date)
+        AND (p_to_date IS NULL OR o.created_at <= p_to_date)
+        AND o.status IN ('Processing', 'Shipped', 'Delivered')
+    GROUP BY p.id, p.name, p.sku, p.price
+    ORDER BY total_quantity_sold DESC
+    LIMIT p_top_n;
+END;
+$$;
 
 -- Table-Valued Function: Get Products Low on Stock
-IF OBJECT_ID('fn_GetProductsLowOnStock', 'TF') IS NOT NULL
-    DROP FUNCTION fn_GetProductsLowOnStock;
-GO
+DROP FUNCTION IF EXISTS fn_get_products_low_on_stock(integer);
 
-CREATE FUNCTION fn_GetProductsLowOnStock
-(
-    @Threshold INT = 20
+CREATE OR REPLACE FUNCTION fn_get_products_low_on_stock(
+    p_threshold integer DEFAULT 20
 )
-RETURNS TABLE
-AS
-RETURN
-(
+RETURNS TABLE (
+    product_id uuid,
+    product_name varchar(200),
+    sku varchar(100),
+    product_status text,
+    warehouse_code varchar(50),
+    quantity integer,
+    available_quantity integer,
+    reserved_quantity integer,
+    last_restocked timestamp
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
     SELECT 
-        p.Id AS ProductId,
-        p.Name AS ProductName,
-        p.SKU,
-        p.Status AS ProductStatus,
-        pi.WarehouseCode,
-        pi.Quantity,
-        pi.AvailableQuantity,
-        pi.ReservedQuantity,
-        pi.LastRestocked
-    FROM Products p
-    INNER JOIN ProductInventories pi ON p.Id = pi.ProductId
-    WHERE pi.AvailableQuantity <= @Threshold
-        AND p.Status = 'Active'
-        AND pi.Status = 'InStock'
-);
-GO
+        p.id AS product_id,
+        p.name AS product_name,
+        p.sku,
+        p.status AS product_status,
+        pi.warehouse_code,
+        pi.quantity,
+        pi.available_quantity,
+        pi.reserved_quantity,
+        pi.last_restocked
+    FROM products p
+    INNER JOIN product_inventories pi ON p.id = pi.product_id
+    WHERE pi.available_quantity <= p_threshold
+        AND p.status = 'Active'
+        AND pi.status = 'InStock';
+END;
+$$;
 
 -- Table-Valued Function: Get User Activity Summary
-IF OBJECT_ID('fn_GetUserActivitySummary', 'TF') IS NOT NULL
-    DROP FUNCTION fn_GetUserActivitySummary;
-GO
+DROP FUNCTION IF EXISTS fn_get_user_activity_summary(uuid);
 
-CREATE FUNCTION fn_GetUserActivitySummary
-(
-    @UserId UNIQUEIDENTIFIER
+CREATE OR REPLACE FUNCTION fn_get_user_activity_summary(
+    p_user_id uuid
 )
-RETURNS TABLE
-AS
-RETURN
-(
+RETURNS TABLE (
+    user_id uuid,
+    total_orders bigint,
+    total_spent NUMERIC(18,2),
+    total_reviews bigint,
+    active_sessions bigint,
+    last_activity timestamp,
+    average_rating NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
     SELECT 
-        @UserId AS UserId,
-        (SELECT COUNT(*) FROM Orders WHERE UserId = @UserId) AS TotalOrders,
-        (SELECT SUM(Total) FROM Orders WHERE UserId = @UserId AND Status = 'Delivered') AS TotalSpent,
-        (SELECT COUNT(*) FROM ProductReviews WHERE UserId = @UserId) AS TotalReviews,
-        (SELECT COUNT(*) FROM UserSessions WHERE UserId = @UserId AND Status = 'Active') AS ActiveSessions,
-        (SELECT MAX(LastActivityAt) FROM UserSessions WHERE UserId = @UserId) AS LastActivity,
-        (SELECT AVG(CAST(Rating AS FLOAT)) FROM ProductReviews WHERE UserId = @UserId) AS AverageRating
-);
-GO
+        p_user_id AS user_id,
+        (SELECT COUNT(*) FROM orders WHERE user_id = p_user_id) AS total_orders,
+        (SELECT SUM(total) FROM orders WHERE user_id = p_user_id AND status = 'Delivered') AS total_spent,
+        (SELECT COUNT(*) FROM product_reviews WHERE user_id = p_user_id) AS total_reviews,
+        (SELECT COUNT(*) FROM user_sessions WHERE user_id = p_user_id AND status = 'Active') AS active_sessions,
+        (SELECT MAX(last_activity_at) FROM user_sessions WHERE user_id = p_user_id) AS last_activity,
+        (SELECT AVG(rating::NUMERIC) FROM product_reviews WHERE user_id = p_user_id) AS average_rating;
+END;
+$$;
 
-PRINT 'Functions created successfully!';
-
+-- Verification message
+DO $$
+BEGIN
+    RAISE NOTICE 'Functions created successfully!';
+END $$;
 
