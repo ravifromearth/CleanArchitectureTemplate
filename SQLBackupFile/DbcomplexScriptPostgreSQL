@@ -1,0 +1,547 @@
+-- PostgreSQL 15+ DDL converted from SQL Server (ComplexDB)
+-- Rules-driven per "SQL Server → PostgreSQL Migration Rules" v2.0.  Extensions first, then objects.  :contentReference[oaicite:2]{index=2}
+
+-- 1) Extensions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- for gen_random_uuid() and crypto helpers
+
+-- 2) Schemas
+-- Using default "public" per target assumptions.
+
+-- 3) Tables (base objects; snake_case; idiomatic types)
+
+-- users
+CREATE TABLE public.users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  username varchar(100) NOT NULL,
+  email varchar(255) NOT NULL,
+  bio varchar(500),
+  last_login_at timestamp,
+  birth_date date NOT NULL,
+  preferred_login_time time NOT NULL,
+  metadata text,
+  tags text,
+  favorite_numbers text,
+  credit_score numeric(18,6) NOT NULL,
+  balance numeric(19,4) NOT NULL,                      -- money → numeric(19,4)
+  profile_picture bytea,
+  status text NOT NULL,
+  role text NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_users PRIMARY KEY (id)
+);
+
+-- orders
+CREATE TABLE public.orders (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  order_number varchar(50),
+  shipped_at timestamp,
+  delivered_at timestamp,
+  sub_total numeric(18,2) NOT NULL,
+  tax_amount numeric(18,2) NOT NULL,
+  shipping_cost numeric(18,2) NOT NULL,
+  total numeric(18,2) NOT NULL,
+  order_data text,
+  tags text,
+  status text NOT NULL,
+  payment_method text NOT NULL,
+  shipping_address_street varchar(200),
+  shipping_address_city varchar(100),
+  shipping_address_state varchar(100),
+  shipping_address_postal_code varchar(20),
+  shipping_address_country varchar(100),
+  shipping_address_latitude double precision,
+  shipping_address_longitude double precision,
+  billing_address_street varchar(200),
+  billing_address_city varchar(100),
+  billing_address_state varchar(100),
+  billing_address_postal_code varchar(20),
+  billing_address_country varchar(100),
+  billing_address_latitude double precision,
+  billing_address_longitude double precision,
+  receipt_pdf bytea,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_orders PRIMARY KEY (id)
+);
+
+-- user_profiles
+CREATE TABLE public.user_profiles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  first_name varchar(100),
+  last_name varchar(100),
+  phone_number varchar(20),
+  home_address_street varchar(200),
+  home_address_city varchar(100),
+  home_address_state varchar(100),
+  home_address_postal_code varchar(20),
+  home_address_country varchar(100),
+  home_address_latitude double precision,
+  home_address_longitude double precision,
+  work_address_street varchar(200),
+  work_address_city varchar(100),
+  work_address_state varchar(100),
+  work_address_postal_code varchar(20),
+  work_address_country varchar(100),
+  work_address_latitude double precision,
+  work_address_longitude double precision,
+  preferences text,
+  skills text,
+  languages text,
+  anniversary date,
+  avatar bytea,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_user_profiles PRIMARY KEY (id)
+);
+
+-- products
+CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name varchar(200) NOT NULL,
+  description varchar(1000),
+  sku varchar(100),
+  barcode varchar(50),
+  price numeric(18,4) NOT NULL,
+  sale_price numeric(18,4),
+  cost numeric(18,4),
+  specifications text,
+  tags text,
+  categories text,
+  images text,
+  dimensions_length numeric(18,4),
+  dimensions_width numeric(18,4),
+  dimensions_height numeric(18,4),
+  dimensions_unit varchar(10),
+  weight_value numeric(18,4),
+  weight_unit varchar(10),
+  thumbnail bytea,
+  manual_pdf bytea,
+  discontinued_at timestamp,
+  status text NOT NULL,
+  type text NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_products PRIMARY KEY (id)
+);
+
+-- product_inventories
+CREATE TABLE public.product_inventories (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL,
+  warehouse_code varchar(100),
+  location varchar(200),
+  quantity integer NOT NULL,
+  reserved_quantity integer,
+  available_quantity integer,
+  unit_cost numeric(18,4),
+  unit_price numeric(18,4),
+  last_updated timestamp NOT NULL,
+  last_restocked timestamp,
+  expiry_date timestamp,
+  inventory_data text,
+  batch_numbers text,
+  serial_numbers text,
+  barcode_image bytea,
+  status text NOT NULL,
+  type text NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_product_inventories PRIMARY KEY (id)
+);
+
+-- order_items
+CREATE TABLE public.order_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  product_name varchar(200),
+  description varchar(1000),
+  quantity integer NOT NULL,
+  unit_price numeric(18,4) NOT NULL,
+  total_price numeric(18,4) NOT NULL,
+  product_data text,
+  attributes text,
+  categories text,
+  product_image bytea,
+  added_at timestamp NOT NULL,
+  modified_at timestamp,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_order_items PRIMARY KEY (id)
+);
+
+-- product_reviews
+CREATE TABLE public.product_reviews (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  title varchar(200),
+  comment varchar(2000),
+  rating integer NOT NULL,
+  review_data text,
+  tags text,
+  review_image bytea,
+  status text NOT NULL,
+  type text NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_product_reviews PRIMARY KEY (id),
+  CHECK (rating BETWEEN 1 AND 5)
+);
+
+-- user_sessions
+CREATE TABLE public.user_sessions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  session_token varchar(500),
+  ip_address varchar(45),
+  user_agent varchar(500),
+  expires_at timestamp,
+  last_activity_at timestamp,
+  session_data text,
+  permissions text,
+  encryption_key bytea,
+  status text NOT NULL,
+  type text NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_user_sessions PRIMARY KEY (id)
+);
+
+-- order_status_histories
+CREATE TABLE public.order_status_histories (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL,
+  changed_by varchar(100),
+  old_status text NOT NULL,
+  new_status text NOT NULL,
+  changed_at timestamp NOT NULL,
+  reason varchar(500),
+  notes varchar(1000),
+  change_data text,
+  tags text,
+  document bytea,
+  created_at timestamp NOT NULL,
+  updated_at timestamp,
+  CONSTRAINT pk_order_status_histories PRIMARY KEY (id)
+);
+
+-- 4) Constraints (FKs created after base tables to avoid dependency issues)
+ALTER TABLE public.orders
+  ADD CONSTRAINT fk_orders_user
+  FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE public.user_profiles
+  ADD CONSTRAINT fk_user_profiles_user
+  FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE public.product_inventories
+  ADD CONSTRAINT fk_product_inventories_product
+  FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+ALTER TABLE public.order_items
+  ADD CONSTRAINT fk_order_items_order
+  FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+ALTER TABLE public.order_items
+  ADD CONSTRAINT fk_order_items_product
+  FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+ALTER TABLE public.product_reviews
+  ADD CONSTRAINT fk_product_reviews_product
+  FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+ALTER TABLE public.product_reviews
+  ADD CONSTRAINT fk_product_reviews_user
+  FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE public.user_sessions
+  ADD CONSTRAINT fk_user_sessions_user
+  FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+ALTER TABLE public.order_status_histories
+  ADD CONSTRAINT fk_order_status_histories_order
+  FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+-- 5) Indexes (cover common FK lookups and filters)
+CREATE INDEX ix_orders_user_id ON public.orders(user_id);
+CREATE INDEX ix_user_profiles_user_id ON public.user_profiles(user_id);
+CREATE INDEX ix_product_inventories_product_id ON public.product_inventories(product_id);
+CREATE INDEX ix_order_items_order_id ON public.order_items(order_id);
+CREATE INDEX ix_order_items_product_id ON public.order_items(product_id);
+CREATE INDEX ix_product_reviews_product_id ON public.product_reviews(product_id);
+CREATE INDEX ix_product_reviews_user_id ON public.product_reviews(user_id);
+CREATE INDEX ix_user_sessions_user_id ON public.user_sessions(user_id);
+CREATE INDEX ix_orders_status ON public.orders(status);
+CREATE INDEX ix_user_sessions_status_expires ON public.user_sessions(status, expires_at);
+
+-- 6) Views (converted; use COALESCE/aggregates per rules)  :contentReference[oaicite:3]{index=3}
+
+CREATE OR REPLACE VIEW public.vw_user_profile_summary AS
+SELECT 
+  u.id AS user_id,
+  u.username,
+  u.email,
+  u.status,
+  u.role,
+  u.balance,
+  u.credit_score,
+  u.created_at,
+  u.last_login_at,
+  up.first_name,
+  up.last_name,
+  up.phone_number,
+  up.home_address_city AS city,
+  up.home_address_state AS state,
+  up.home_address_country AS country,
+  (SELECT COUNT(*)::int FROM public.orders o WHERE o.user_id = u.id) AS total_orders,
+  (SELECT SUM(o.total) FROM public.orders o WHERE o.user_id = u.id) AS total_spent
+FROM public.users u
+LEFT JOIN public.user_profiles up ON u.id = up.user_id;
+
+CREATE OR REPLACE VIEW public.vw_product_inventory_status AS
+SELECT 
+  p.id AS product_id,
+  p.name AS product_name,
+  p.sku,
+  p.price,
+  p.sale_price,
+  p.status AS product_status,
+  p.type AS product_type,
+  pi.warehouse_code,
+  pi.quantity,
+  pi.available_quantity,
+  pi.reserved_quantity,
+  pi.status AS inventory_status,
+  pi.last_updated,
+  CASE 
+    WHEN pi.available_quantity > 100 THEN 'High Stock'
+    WHEN pi.available_quantity BETWEEN 20 AND 100 THEN 'Medium Stock'
+    WHEN pi.available_quantity BETWEEN 1 AND 19 THEN 'Low Stock'
+    ELSE 'Out of Stock'
+  END AS stock_level
+FROM public.products p
+LEFT JOIN public.product_inventories pi ON p.id = pi.product_id;
+
+CREATE OR REPLACE VIEW public.vw_order_details_summary AS
+SELECT 
+  o.id AS order_id,
+  o.order_number,
+  o.user_id,
+  u.username,
+  u.email,
+  o.created_at AS order_date,
+  o.status AS order_status,
+  o.payment_method,
+  o.sub_total,
+  o.tax_amount,
+  o.shipping_cost,
+  o.total,
+  o.shipping_address_city AS ship_to_city,
+  o.shipping_address_state AS ship_to_state,
+  o.shipping_address_country AS ship_to_country,
+  (SELECT COUNT(*) FROM public.order_items oi WHERE oi.order_id = o.id) AS total_items,
+  (SELECT COALESCE(SUM(oi.quantity),0) FROM public.order_items oi WHERE oi.order_id = o.id) AS total_quantity
+FROM public.orders o
+JOIN public.users u ON o.user_id = u.id;
+
+CREATE OR REPLACE VIEW public.vw_active_user_sessions AS
+SELECT 
+  us.id AS session_id,
+  us.user_id,
+  u.username,
+  u.email,
+  us.session_token,
+  us.ip_address,
+  us.type AS session_type,
+  us.status AS session_status,
+  us.created_at,
+  us.last_activity_at,
+  us.expires_at,
+  /* DATEDIFF(MINUTE, last_activity_at, GETDATE()) → per rules: epoch diff / 60 */
+  FLOOR(EXTRACT(EPOCH FROM (NOW() - us.last_activity_at)) / 60.0)::int AS minutes_since_last_activity
+FROM public.user_sessions us
+JOIN public.users u ON us.user_id = u.id
+WHERE us.status = 'Active' AND us.expires_at > NOW();
+
+-- 7) Functions (scalar & TVF equivalents; PL/pgSQL)  :contentReference[oaicite:4]{index=4}
+
+-- fn_calculate_order_discount(@SubTotal, @UserRole) RETURNS decimal(18,2)
+CREATE OR REPLACE FUNCTION public.fn_calculate_order_discount(sub_total numeric(18,2), user_role text)
+RETURNS numeric(18,2)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  discount numeric(18,2) := 0;
+BEGIN
+  IF user_role = 'SuperAdmin' THEN
+    discount := sub_total * 0.20;
+  ELSIF user_role = 'Admin' THEN
+    discount := sub_total * 0.15;
+  ELSIF user_role = 'Moderator' THEN
+    discount := sub_total * 0.10;
+  ELSIF sub_total > 1000 THEN
+    discount := sub_total * 0.05;
+  END IF;
+  RETURN discount;
+END;
+$$;
+
+-- fn_calculate_user_lifetime_value(@UserId) RETURNS decimal(18,2)
+CREATE OR REPLACE FUNCTION public.fn_calculate_user_lifetime_value(p_user_id uuid)
+RETURNS numeric(18,2)
+LANGUAGE sql
+AS $$
+  SELECT COALESCE(SUM(o.total), 0)::numeric(18,2)
+  FROM public.orders o
+  WHERE o.user_id = p_user_id
+    AND o.status IN ('Delivered','Processing','Shipped');
+$$;
+
+-- fn_get_product_average_rating(@ProductId) RETURNS decimal(3,2)
+CREATE OR REPLACE FUNCTION public.fn_get_product_average_rating(p_product_id uuid)
+RETURNS numeric(3,2)
+LANGUAGE sql
+AS $$
+  SELECT COALESCE(AVG(pr.rating)::numeric(3,2), 0::numeric(3,2))
+  FROM public.product_reviews pr
+  WHERE pr.product_id = p_product_id
+    AND pr.status = 'Approved';
+$$;
+
+-- fn_get_user_order_history(@UserId, @FromDate, @ToDate) RETURNS TABLE (...)
+CREATE OR REPLACE FUNCTION public.fn_get_user_order_history(
+  p_user_id uuid,
+  p_from_date timestamp DEFAULT NULL,
+  p_to_date timestamp DEFAULT NULL
+)
+RETURNS TABLE (
+  id uuid,
+  order_number varchar,
+  created_at timestamp,
+  status text,
+  payment_method text,
+  total numeric(18,2),
+  item_count bigint,
+  total_quantity bigint
+)
+LANGUAGE sql
+AS $$
+  SELECT 
+    o.id,
+    o.order_number,
+    o.created_at,
+    o.status,
+    o.payment_method,
+    o.total,
+    COUNT(oi.id) AS item_count,
+    COALESCE(SUM(oi.quantity),0) AS total_quantity
+  FROM public.orders o
+  LEFT JOIN public.order_items oi ON o.id = oi.order_id
+  WHERE o.user_id = p_user_id
+    AND (p_from_date IS NULL OR o.created_at >= p_from_date)
+    AND (p_to_date   IS NULL OR o.created_at <= p_to_date)
+  GROUP BY o.id, o.order_number, o.created_at, o.status, o.payment_method, o.total;
+$$;
+
+-- fn_get_top_selling_products(@TopN, @FromDate, @ToDate) RETURNS TABLE (...)
+CREATE OR REPLACE FUNCTION public.fn_get_top_selling_products(
+  p_top_n integer DEFAULT 10,
+  p_from_date timestamp DEFAULT NULL,
+  p_to_date timestamp DEFAULT NULL
+)
+RETURNS TABLE (
+  product_id uuid,
+  product_name varchar,
+  sku varchar,
+  price numeric(18,4),
+  times_sold bigint,
+  total_quantity_sold bigint,
+  total_revenue numeric,
+  average_selling_price numeric
+)
+LANGUAGE sql
+AS $$
+  SELECT
+    p.id AS product_id,
+    p.name AS product_name,
+    p.sku,
+    p.price,
+    COUNT(oi.id) AS times_sold,
+    SUM(oi.quantity) AS total_quantity_sold,
+    SUM(oi.total_price) AS total_revenue,
+    AVG(oi.unit_price) AS average_selling_price
+  FROM public.products p
+  JOIN public.order_items oi ON p.id = oi.product_id
+  JOIN public.orders o ON oi.order_id = o.id
+  WHERE (p_from_date IS NULL OR o.created_at >= p_from_date)
+    AND (p_to_date   IS NULL OR o.created_at <= p_to_date)
+    AND o.status IN ('Processing','Shipped','Delivered')
+  GROUP BY p.id, p.name, p.sku, p.price
+  ORDER BY total_quantity_sold DESC
+  LIMIT GREATEST(p_top_n, 0);
+$$;
+
+-- fn_get_products_low_on_stock(@Threshold) RETURNS TABLE (...)
+CREATE OR REPLACE FUNCTION public.fn_get_products_low_on_stock(p_threshold integer DEFAULT 20)
+RETURNS TABLE (
+  product_id uuid,
+  product_name varchar,
+  sku varchar,
+  product_status text,
+  warehouse_code varchar,
+  quantity integer,
+  available_quantity integer,
+  reserved_quantity integer,
+  last_restocked timestamp
+)
+LANGUAGE sql
+AS $$
+  SELECT 
+    p.id,
+    p.name,
+    p.sku,
+    p.status,
+    pi.warehouse_code,
+    pi.quantity,
+    pi.available_quantity,
+    pi.reserved_quantity,
+    pi.last_restocked
+  FROM public.products p
+  JOIN public.product_inventories pi ON p.id = pi.product_id
+  WHERE COALESCE(pi.available_quantity, 0) <= p_threshold
+    AND p.status = 'Active'
+    AND pi.status = 'InStock';
+$$;
+
+-- fn_get_user_activity_summary(@UserId) RETURNS TABLE (...)
+CREATE OR REPLACE FUNCTION public.fn_get_user_activity_summary(p_user_id uuid)
+RETURNS TABLE (
+  user_id uuid,
+  total_orders bigint,
+  total_spent numeric,
+  total_reviews bigint,
+  active_sessions bigint,
+  last_activity timestamp,
+  average_rating numeric
+)
+LANGUAGE sql
+AS $$
+  SELECT 
+    p_user_id AS user_id,
+    (SELECT COUNT(*) FROM public.orders o WHERE o.user_id = p_user_id) AS total_orders,
+    (SELECT COALESCE(SUM(o.total),0) FROM public.orders o WHERE o.user_id = p_user_id AND o.status = 'Delivered') AS total_spent,
+    (SELECT COUNT(*) FROM public.product_reviews pr WHERE pr.user_id = p_user_id) AS total_reviews,
+    (SELECT COUNT(*) FROM public.user_sessions us WHERE us.user_id = p_user_id AND us.status = 'Active') AS active_sessions,
+    (SELECT MAX(us.last_activity_at) FROM public.user_sessions us WHERE us.user_id = p_user_id) AS last_activity,
+    (SELECT AVG(pr.rating)::numeric FROM public.product_reviews pr WHERE pr.user_id = p_user_id) AS average_rating;
+$$;
+
+-- 8) (Optional) Final GRANTS can be added per environment/security model.
+
+-- Notes:
+-- * Database-level options (compatibility level, filestream, query store, broker, etc.) are SQL Server–specific and intentionally omitted or require PG equivalents outside schema DDL.  :contentReference[oaicite:5]{index=5}
+-- * Remaining objects from the source script not shown in the provided excerpt should be converted similarly following the same rules.  :contentReference[oaicite:6]{index=6}
