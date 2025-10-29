@@ -1,0 +1,456 @@
+ SQL Server to PostgreSQL Migration Technical Summary
+
+  Overview
+
+  The migration successfully transformed a .NET Core 8 Clean Architecture application from using SQL Server to PostgreSQL, following best practices and implementing PostgreSQL-native features. The
+  transformation focused on:
+
+  1. Package reference changes
+  2. Database configuration updates
+  3. Entity configuration modifications
+  4. SQL syntax conversion
+  5. Data type mapping
+  6. Connection string optimization
+ 
+ #Prompt file Key Changes Made:
+ 
+  1. Package References:
+    - Added: Npgsql 8.0.5, EFCore.NamingConventions 8.0.0, Microsoft.EntityFrameworkCore.Relational 8.0.0
+    - Removed: Microsoft.EntityFrameworkCore.SqlServer
+  2. Database Configuration:
+    - Updated configuration to use PostgreSQL by default
+    - Added snake_case naming convention
+    - Enhanced connection string with PostgreSQL-specific settings
+  3. Schema Changes:
+    - Set default schema to "public"
+    - Implemented explicit table names with pluralization and snake_case
+    - Changed column types to PostgreSQL-native types (e.g., money → numeric(19,4))
+    - Configured array properties to use PostgreSQL native arrays
+  4. Database Objects:
+    - Converted SQL Server views to PostgreSQL views with snake_case naming
+    - Converted SQL Server functions to PostgreSQL PL/pgSQL functions
+    - Converted SQL Server stored procedures to PostgreSQL procedures and functions
+  5. Code Changes:
+    - Updated all SQL Server-specific code to use PostgreSQL syntax
+    - Replaced SqlParameter with NpgsqlParameter
+    - Enhanced validation and error handling for PostgreSQL
+  6. Created Documentation:
+    - PG_EXTENSIONS.sql: Script to enable required PostgreSQL extensions
+    - MIGRATION_COMMANDS.sh: Script with commands to run the migration
+    - WARNINGS.md: Documentation of potential issues and manual steps
+    - MIGRATION_REPORT.md: Detailed report of the migration process
+    - CHANGED_FILES.json: List of all modified files
+
+  
+##Key Technical Changes
+
+  1. Package References
+
+  Before:
+  <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
+
+  After:
+  <PackageReference Include="Npgsql" Version="8.0.5" />
+  <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
+  <PackageReference Include="EFCore.NamingConventions" Version="8.0.0" />
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.0" />
+
+  2. DbContext Configuration
+
+  Before:
+  // Configure database provider
+  if (databaseSettings.UseSqlServer)
+  {
+      services.AddDbContext<ApplicationDbContext>(options =>
+          options.UseSqlServer(
+              databaseSettings.ConnectionStrings.SqlServer,
+              sqlOptions => sqlOptions.EnableRetryOnFailure(
+                  maxRetryCount: 5,
+                  maxRetryDelay: TimeSpan.FromSeconds(30),
+                  errorNumbersToAdd: null)
+          ));
+  }
+  else
+  {
+      services.AddDbContext<ApplicationDbContext>(options =>
+          options.UseNpgsql(
+              databaseSettings.ConnectionStrings.PostgreSQL,
+              npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
+                  maxRetryCount: 5,
+                  maxRetryDelay: TimeSpan.FromSeconds(30),
+                  errorCodesToAdd: null)
+          ));
+  }
+
+  After:
+  // Configure database provider (PostgreSQL)
+  services.AddDbContext<ApplicationDbContext>(options =>
+  {
+      options.UseNpgsql(
+          databaseSettings.ConnectionStrings.PostgreSQL,
+          npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
+              maxRetryCount: 5,
+              maxRetryDelay: TimeSpan.FromSeconds(30),
+              errorCodesToAdd: null)
+      );
+
+      // Apply snake_case naming convention for PostgreSQL
+      if (databaseSettings.UseSnakeCaseNaming)
+      {
+          options.UseSnakeCaseNamingConvention();
+      }
+  });
+
+  3. Connection String
+
+  Before:
+  "ConnectionStrings": {
+      "SqlServer": "Data Source=TRI02L-PW03VMZD\\MSSQLSERVER1;Initial Catalog=ComplexDB;User Id=sa;Password=Welcome@123;Encrypt=False;Connect Timeout=5;"
+  }
+
+  After:
+  "ConnectionStrings": {
+      "SqlServer": "",
+      "PostgreSQL": "Host=localhost;Port=5432;Database=ComplexDB;Username=postgres;Password=Ravi@12345;SSL Mode=Prefer;Trust Server Certificate=true;Maximum Pool Size=100;Minimum Pool Size=5;Command
+  Timeout=30;"
+  }
+
+  4. Entity Configuration
+
+  Table Naming
+
+  Before:
+  // No explicit table names, relying on conventions
+
+  After:
+  entity.ToTable("users");
+  entity.ToTable("user_profiles");
+  entity.ToTable("products");
+
+  Data Type Mapping
+
+  Before:
+  entity.Property(e => e.Balance).HasColumnType("money");
+
+  After:
+  entity.Property(e => e.Balance).HasColumnType("numeric(19,4)");
+
+  UUID/GUID Generation
+
+  Before:
+  entity.Property(e => e.Id).HasDefaultValueSql(GetDefaultGuidSql(isPostgreSQL));
+  // where GetDefaultGuidSql returns "(newid())" for SQL Server
+
+  After:
+  entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
+
+  Array Configuration
+
+  Before:
+  private static void ConfigureArrays(PropertyBuilder<string[]> property, bool isPostgreSQL)
+  {
+      if (isPostgreSQL)
+      {
+          property.HasColumnType("text[]");
+      }
+      else
+      {
+          property.HasConversion(
+              v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+              v => JsonSerializer.Deserialize<string[]>(v, (JsonSerializerOptions?)null) ?? Array.Empty<string>()
+          );
+      }
+  }
+
+  After:
+  private static void ConfigureArrays(PropertyBuilder<string[]> property)
+  {
+      property.HasColumnType("text[]");
+  }
+
+  5. Database Parameters
+
+  SQL Parameters
+
+  Before:
+  var userIdParam = new SqlParameter("@UserId", userId);
+
+  var result = await _context.Database
+      .SqlQuery<decimal>($"SELECT dbo.fn_CalculateUserLifetimeValue({userIdParam}) AS Value")
+      .FirstOrDefaultAsync();
+
+  After:
+  var userIdParam = new NpgsqlParameter("user_id_param", NpgsqlDbType.Uuid) { Value = userId };
+
+  var result = await _context.Database
+      .SqlQuery<decimal>($"SELECT fn_calculate_user_lifetime_value({userIdParam}) AS Value")
+      .FirstOrDefaultAsync();
+
+  6. Database Objects
+
+  View Definition
+
+  Before:
+  CREATE VIEW vw_UserProfileSummary
+  AS
+  SELECT
+      u.Id AS UserId,
+      u.Username,
+      u.Email,
+      -- other columns
+      (SELECT CAST(COUNT(*) AS INT) FROM Orders WHERE UserId = u.Id) AS TotalOrders,
+      (SELECT SUM(Total) FROM Orders WHERE UserId = u.Id) AS TotalSpent
+  FROM Users u
+  LEFT JOIN UserProfiles up ON u.Id = up.UserId;
+  GO
+
+  After:
+  CREATE OR REPLACE VIEW vw_user_profile_summary
+  AS
+  SELECT
+      u.id AS user_id,
+      u.username,
+      u.email,
+      -- other columns
+      (SELECT COUNT(*)::INTEGER FROM orders WHERE user_id = u.id) AS total_orders,
+      (SELECT SUM(total) FROM orders WHERE user_id = u.id) AS total_spent
+  FROM users u
+  LEFT JOIN user_profiles up ON u.id = up.user_id;
+
+  Function Definition
+
+  Before:
+  CREATE FUNCTION fn_CalculateUserLifetimeValue
+  (
+      @UserId UNIQUEIDENTIFIER
+  )
+  RETURNS DECIMAL(18,2)
+  AS
+  BEGIN
+      DECLARE @LifetimeValue DECIMAL(18,2);
+
+      SELECT @LifetimeValue = ISNULL(SUM(Total), 0)
+      FROM Orders
+      WHERE UserId = @UserId AND Status IN ('Delivered', 'Processing', 'Shipped');
+
+      RETURN @LifetimeValue;
+  END;
+  GO
+
+  After:
+  CREATE OR REPLACE FUNCTION fn_calculate_user_lifetime_value(
+      user_id_param UUID
+  )
+  RETURNS NUMERIC(18,2)
+  LANGUAGE plpgsql
+  AS $$
+  DECLARE
+      lifetime_value NUMERIC(18,2);
+  BEGIN
+      SELECT COALESCE(SUM(total), 0::NUMERIC)
+      INTO lifetime_value
+      FROM orders
+      WHERE user_id = user_id_param AND status IN ('Delivered', 'Processing', 'Shipped');
+
+      RETURN lifetime_value;
+  END;
+  $$;
+
+  Stored Procedure
+
+  Before:
+  CREATE PROCEDURE sp_GetSalesReport
+      @FromDate DATETIME = NULL,
+      @ToDate DATETIME = NULL,
+      @Status NVARCHAR(MAX) = NULL
+  AS
+  BEGIN
+      SET NOCOUNT ON;
+
+      -- Set default date range if not provided
+      IF @FromDate IS NULL
+          SET @FromDate = DATEADD(DAY, -30, GETDATE());
+      IF @ToDate IS NULL
+          SET @ToDate = GETDATE();
+
+      SELECT
+          CAST(o.CreatedAt AS DATE) AS OrderDate,
+          COUNT(o.Id) AS TotalOrders,
+          -- other columns
+      FROM Orders o
+      LEFT JOIN OrderItems oi ON o.Id = oi.OrderId
+      WHERE o.CreatedAt >= @FromDate
+          AND o.CreatedAt <= @ToDate
+          AND (@Status IS NULL OR o.Status = @Status)
+      GROUP BY CAST(o.CreatedAt AS DATE)
+      ORDER BY OrderDate DESC;
+  END;
+  GO
+
+  After:
+  CREATE OR REPLACE FUNCTION fn_get_sales_report(
+      from_date_param TIMESTAMP = NULL,
+      to_date_param TIMESTAMP = NULL,
+      status_param TEXT = NULL
+  )
+  RETURNS TABLE (
+      order_date DATE,
+      total_orders BIGINT,
+      total_revenue NUMERIC,
+      average_order_value NUMERIC,
+      total_shipping NUMERIC,
+      total_tax NUMERIC,
+      unique_customers BIGINT,
+      total_items_sold NUMERIC
+  )
+  LANGUAGE plpgsql
+  AS $$
+  BEGIN
+      -- Set default date range if not provided
+      IF from_date_param IS NULL THEN
+          from_date_param := NOW() - INTERVAL '30 days';
+      END IF;
+
+      IF to_date_param IS NULL THEN
+          to_date_param := NOW();
+      END IF;
+
+      RETURN QUERY
+      SELECT
+          CAST(o.created_at AS DATE) AS order_date,
+          COUNT(o.id) AS total_orders,
+          -- other columns
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.created_at >= from_date_param
+          AND o.created_at <= to_date_param
+          AND (status_param IS NULL OR o.status = status_param)
+      GROUP BY CAST(o.created_at AS DATE)
+      ORDER BY order_date DESC;
+  END;
+  $$;
+
+  7. Database Validation
+
+  Before:
+  public async Task<bool> CreateDatabaseIfNotExistsAsync()
+  {
+      try
+      {
+          _logger.LogInformation("Ensuring database exists...");
+
+          var created = await _context.Database.EnsureCreatedAsync();
+
+          if (created)
+          {
+              _logger.LogInformation("✓ Database created successfully");
+          }
+          else
+          {
+              _logger.LogInformation("✓ Database already exists");
+          }
+
+          return true;
+      }
+      catch (Exception ex)
+      {
+          _logger.LogError(ex, "✗ Failed to create database: {Message}", ex.Message);
+          return false;
+      }
+  }
+
+  After:
+  public async Task<bool> CreateDatabaseIfNotExistsAsync()
+  {
+      try
+      {
+          _logger.LogInformation("Ensuring PostgreSQL database exists...");
+
+          var exists = await _context.Database.CanConnectAsync();
+
+          if (exists)
+          {
+              // Validate schema - check for array type mismatches
+              try
+              {
+                  var testQuery = await _context.Users.Take(1).ToListAsync();
+                  _logger.LogInformation("✓ Database exists with correct schema");
+                  return true;
+              }
+              catch (Exception ex) when (
+                  ex.Message.Contains("not supported for fields having DataTypeName") ||
+                  ex.Message.Contains("Reading as") && ex.Message.Contains("is not supported"))
+              {
+                  // Schema mismatch detected - recreate database
+                  _logger.LogWarning("⚠️ Schema mismatch detected. Recreating database...");
+                  await _context.Database.EnsureDeletedAsync();
+                  _logger.LogInformation("✓ Old database deleted");
+              }
+          }
+
+          var created = await _context.Database.EnsureCreatedAsync();
+
+          if (created)
+          {
+              _logger.LogInformation("✓ PostgreSQL database created with correct schema");
+          }
+
+          return true;
+      }
+      catch (Exception ex)
+      {
+          _logger.LogError(ex, "✗ Failed to create database: {Message}", ex.Message);
+          return false;
+      }
+  }
+
+  8. Script Execution
+
+  Before:
+  // Check if any of the views exist
+  var viewExists = await _context.Database
+      .SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM sys.views WHERE name = 'vw_UserProfileSummary'")
+      .FirstOrDefaultAsync();
+
+  After:
+  // Check if any of the views exist using PostgreSQL information_schema
+  var viewExists = await _context.Database
+      .SqlQuery<int>($@"
+          SELECT COUNT(*) AS Value
+          FROM information_schema.views
+          WHERE table_schema = 'public'
+          AND table_name = 'vw_user_profile_summary'")
+      .FirstOrDefaultAsync();
+
+  9. Database Extensions
+
+  New file created (PG_EXTENSIONS.sql):
+  -- PostgreSQL Extensions for ComplexDB
+  -- These extensions need to be enabled in the database before running the application
+
+  -- Enable UUID generation support
+  CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+  CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+  -- Enable full-text search capabilities (for future use)
+  CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+  CREATE EXTENSION IF NOT EXISTS "unaccent";
+
+  -- Enable statistics for performance monitoring
+  CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+
+  -- Verify that extensions were successfully created
+  SELECT * FROM pg_extension;
+
+  Conclusion
+
+  This migration from SQL Server to PostgreSQL involved changes at multiple levels:
+
+  1. Infrastructure: Package references and connection configurations
+  2. Data Access: Entity configurations, naming conventions, and data type mappings
+  3. Database Objects: Conversion of views, functions, and stored procedures to PostgreSQL syntax
+  4. Parameter Usage: Replace SqlParameter with NpgsqlParameter
+  5. Data Types: Using native PostgreSQL types like arrays and jsonb
+  6. Validation: Enhanced database schema validation specific to PostgreSQL
+
+
